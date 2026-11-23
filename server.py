@@ -1,4 +1,8 @@
+import pickle
 import socket
+import struct
+
+import cv2
 
 
 class socketServer:
@@ -19,32 +23,33 @@ class socketServer:
                         self.process(clientsocket, address)
 
         def process(self, clientsocket, address):
-                # receive info from client
-                print("Connection from: " + str(address))
-                msgLen = 0
-                payload = ""
+                conn = clientsocket
+                print("Got connection from", address)
+                data = b''
+                payload_size = struct.calcsize("L")
 
-                while 1:  # you probably want to limit this so it doesn't block forever
-                        chunk = clientsocket.recv(1024).decode("utf-8")
+                while True:
+                        while len(data) < payload_size:
+                                data += conn.recv(4096)
+                                print("Recv: {}".format(len(data)))
 
-                        if chunk == "" or msgLen >= 1024:  # we're done... max 1024 bytes in this case
-                                break
-                        else:
-                                payload = payload + chunk
-                                msgLen += len(chunk)
+                        packed_msg_size = data[:payload_size]
+                        data = data[payload_size:]
+                        msg_size = struct.unpack(">I", packed_msg_size)[0]
+                        print("msg_size: {}".format(msg_size))
+                        
+                        # Retrieve all data based on message size
+                        while len(data) < msg_size:
+                                data += conn.recv(4096)
 
-                # we now have info from the client
-                response = self.doSomething(payload)
+                        frame_data = data[:msg_size]
+                        data = data[msg_size:]
 
-                # send response
-                clientsocket.sendall(response.encode("utf-8"))
-
-                clientsocket.close()
-
-        def doSomething(self, payload):
-                print("payload: " + payload)
-                return "this is the response to the client"
-
+                        frame = pickle.loads(frame_data)
+                        print("received frame of size {}".format(len(frame_data)))
+                        # Display
+                        cv2.imshow('frame', frame)
+                        cv2.waitKey(1)
 
 if __name__ == "__main__":
         a = socketServer()  # this will block
