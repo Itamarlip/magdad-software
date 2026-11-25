@@ -12,6 +12,8 @@ class ImageProcessor:
         self.gray_cropped = cv2.cvtColor(self.cropped, cv2.COLOR_BGR2GRAY)
         self.blank_with_lines = np.zeros_like(self.cropped)
         self.lines = []
+        self.valid_lines = []
+
     
 
 
@@ -37,6 +39,7 @@ class ImageProcessor:
         lines_equations = [lines_equations[i] for i in range(len(lines_equations)) 
                         if lines_equations[i][0] != float('inf') and
                         lines_equations[i][1] <1000 and abs(lines_equations[i][0]) < 1]
+        
         for i in range(len(lines_equations)):
             if lines_equations[i] is None:
                 continue
@@ -51,7 +54,9 @@ class ImageProcessor:
                     lines_equations[i] = (new_m, new_b)
                     lines_equations[j] = None
 
-        united_lines = [line for line in lines_equations if line is not None and abs(np.arctan(line[0]))<30]
+        united_lines = [line for line in lines_equations if line is not None and
+                         abs(np.arctan(line[0]))<30 and (line[0]!=0.0 or line[1]!=0.0) and
+                         (line[0]!=0.0 or line[1]<self.gray_cropped.shape[0]-2)]
         return united_lines
 
     def detect_lines_in_binary_image(self, img, m_error, b_error, hough_threshold, minLineLength, maxLineGap, canny_lower, canny_upper) -> list((int,int)):
@@ -67,7 +72,7 @@ class ImageProcessor:
         for line in lines:
             x1, y1, x2, y2 = line[0]
             m = (y2 - y1) / (x2 - x1) if (x2 - x1) != 0 else float('inf')  
-            b = (y1 - m * x1)
+            b = (y1 - m * x1) if m != float('inf') else 1000000
             lines_equations.append((m, b))
 
         
@@ -78,8 +83,10 @@ class ImageProcessor:
     def process_image(self, m_error = 0.03, b_error = 30, hough_threshold = 50,
                        minLineLength = 30, maxLineGap = 10, canny_lower = 50,
                         canny_upper= 150, display=False):
-        _, black_mask = cv2.threshold(self.gray_cropped, 50, 255, cv2.THRESH_BINARY_INV)
-
+        _, black_mask = cv2.threshold(self.gray_cropped, 80, 255, cv2.THRESH_BINARY_INV)
+        if display:
+            cv2.imshow("black", black_mask)
+            cv2.waitKey(1)
         contours, _ = cv2.findContours(black_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         updated_contours = []
@@ -96,15 +103,53 @@ class ImageProcessor:
             cv2.destroyAllWindows()
         print(f"Number of contours found in image: {len(updated_contours)}")
         self.lines = self.detect_lines_in_binary_image(blank_image, m_error, b_error, hough_threshold, minLineLength, maxLineGap, canny_lower, canny_upper)
+        
         if display:
-            self.disp_image(self.cropped.copy(), "Cropped Image", self.lines)
+            self.disp_image(self.cropped.copy(), "All Lines", self.lines)
 
-    def decide_open_close(self, x_ratio, y_ratio):
+
+    def get_only_door_lines(self, x_ratio, y_ratio, display):
         size_x_axis = self.gray_cropped.shape[1]
         size_y_axis = self.gray_cropped.shape[0]
+        x_axis_positive = size_x_axis*x_ratio
+        y_axis_positive = size_y_axis*y_ratio
+        x_axis_negative = size_x_axis - x_axis_positive
+        y_axis_negative = size_y_axis - y_axis_positive
 
-        x_axis_valid = size_x_axis*x_ratio
-        y_axis_valid = size_y_axis*y_ratio
+        lines = self.lines
+        good_index = [False]*len(lines)
+        for i in range(len(lines)):
+            if lines[i] is None:
+                continue
+            m, b = lines[i]
+            for j in range(i + 1, len(lines)):
+                if lines[j] is None:
+                    continue
+                m2, b2 = lines[j]
+                if (m != m2):
+                    x_inter = (b-b2)/(m2-m)
+                    y_inter = m*x_inter+b
+                else:
+                    continue
 
+                if (x_inter<x_axis_positive and x_inter>x_axis_negative and
+                     y_inter<y_axis_positive and y_inter>y_axis_negative):
+                    
+                    good_index[i] = True
+                    good_index[j] = True
+
+
+        good_lines = []
+        for i in range(len(good_index)):
+            if good_index[i]:
+                good_lines.append(self.lines[i])
+
+        self.valid_lines = good_lines
+
+        if display:
+            self.disp_image(self.cropped.copy(), "Valid Lines", self.valid_lines)
+
+
+        return good_lines
         
 

@@ -27,12 +27,14 @@ def handle_q_button():
 
 def process_frame(frame):
     if frame is not None:
-        processor = ImageProcessor(frame, 0.9, 0.3)
-        processor.process_image(canny_lower=0, canny_upper=200, hough_threshold=100, m_error=0.1, display=True)
-        for l in processor.lines:
+        processor = ImageProcessor(frame,1,0.3)
+        processor.process_image(canny_lower= 0, canny_upper=200,hough_threshold=100,
+                                    m_error = 0.07, b_error=50, display=True)
+        processor.get_only_door_lines(3, 3, display=True)
+        for l in processor.valid_lines:
             print(f"Line: y = {l[0]}x + {l[1]}")
 
-        return "open" if len(processor.lines) > 1 else "closed"
+        return "open" if len(processor.valid_lines) > 1 else "closed"
 
 def send_forward():
     pass
@@ -50,12 +52,14 @@ def main():
 
     #server = socketServer()
 
-    cam = cv2.VideoCapture(1)
-
+    cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    cap.set(cv2.CAP_PROP_FPS, 30)
     while True:
-        ret, frame=cam.read()
-        #cv2.imshow('USB Camera', frame)
-        #cv2.waitKey(1)
+        ret, frame=cap.read()
+        cv2.imshow('USB Camera', frame)
+        cv2.waitKey(1)
         if picture_flag:
             print('x')
             door_state = process_frame(frame)
